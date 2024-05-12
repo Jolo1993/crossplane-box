@@ -66,17 +66,10 @@ setup_flux:
   pre_flight=$(bash -c 'flux check --pre' 2>&1)
   exit_code=$?
   if [ $exit_code -eq 0 ]; then
-      flux bootstrap github --owner=$GITHUB_USER --repository=Mgmt-Cluster-demo --branch=main --path=./cluster-resource --personal
+      flux bootstrap github --owner=$GITHUB_USER --repository=crossplane-box --branch=main --path=./apps --personal
   else
       echo $exit_code
   fi
-
-# for core componets you want in your cluster
-add_apps_to_git:
-  cp -r $my_project_repo/* $flux_repo/cluster-resource/
-  git --git-dir=$flux_repo/.git --work-tree=$flux_repo add --all
-  git --git-dir=$flux_repo/.git --work-tree=$flux_repo commit -m "add new apps to core"
-  git --git-dir=$flux_repo/.git --work-tree=$flux_repo push
 
 bootstrap_capi cluster_name='control-plane':
   export KUBECONFIG=$(kind get kubeconfig --name {{cluster_name}})

@@ -1,18 +1,28 @@
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: source.toolkit.fluxcd.io/v1beta1
+kind: GitRepository
+metadata:
+  name: crossplane-repo
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/jolo1993/crossplane-box
+  ref:
+    branch: main
+---
+
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta1
+kind: Kustomization
 metadata:
   name: crossplane-resources
-  namespace: argocd
+  namespace: flux-system
 spec:
-  project: default
-  source:
-    repoURL: https://github.com/Piotr1215/crossplane-box
-    path: yaml
-    targetRevision: HEAD
-  destination:
-    server: "https://kubernetes.default.svc"
-    namespace: default
-  syncPolicy:
-    automated:
-      selfHeal: true
-      prune: true
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: crossplane-repo
+  path: yaml
+  prune: true
+  validation: client
+  interval: 5m
+  force: false
+

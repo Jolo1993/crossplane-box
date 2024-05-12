@@ -8,15 +8,16 @@ browse        := if os() == "linux" { "xdg-open "} else { "open" }
 copy          := if os() == "linux" { "xsel -ib"} else { "pbcopy" }
 replace       := if os() == "linux" { "sed -i"} else { "sed -i '' -e" }
               
-argocd_port   := "30950"
-                                 
+argocd_port   := "30950"                                 
+flux_repo := "/home/jtl/home_projects/controll-plane_test/Mgmt-Cluster-demo"
+my_project_repo := "/home/jtl/home_projects/controll-plane_test/crossplane-box/apps"
 # this list of available targets
 # targets marked with * are main targets
 default:
   just --list --unsorted
 
 # * setup kind cluster with crossplane, ArgoCD and launch argocd in browser
-setup: _replace_repo_user setup_kind setup_crossplane setup_argo launch_argo
+setup: _replace_repo_user setup_kind setup_crossplane setup_flux bootstrap_capi 
 
 # replace repo user
 _replace_repo_user:
@@ -56,31 +57,33 @@ setup_crossplane xp_namespace='crossplane-system':
   helm upgrade --install crossplane --namespace {{xp_namespace}} crossplane-stable/crossplane --devel
   kubectl wait --for condition=Available=True --timeout=300s deployment/crossplane --namespace {{xp_namespace}}
 
-# setup ArgoCD and patch server service to nodePort 30950
-setup_argo:
-  #!/usr/bin/env bash
-  echo "Installing ArgoCD"
-  if kubectl get namespace argocd > /dev/null 2>&1; then
-    echo "Namespace argocd already exists"
-  else
-    echo "Creating namespace argocd"
-    kubectl create namespace argocd
+setup_flux:
+  #!/usr/bin/bash
+  if [[ -z "${GITHUB_USER}" ]] || [[ -z "${GITHUB_TOKEN}" ]]; then
+  echo "GITHUB_USER or GITHUB_TOKEN variable is missing"
+  exit 1
   fi
-  kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml 
-  kubectl wait --for condition=Available=True --timeout=300s deployment/argocd-server --namespace argocd
-  kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "NodePort"}}'
-  kubectl patch svc argocd-server -n argocd --type merge --type='json' -p='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value": {{argocd_port}}}]'
+  pre_flight=$(bash -c 'flux check --pre' 2>&1)
+  exit_code=$?
+  if [ $exit_code -eq 0 ]; then
+      flux bootstrap github --owner=$GITHUB_USER --repository=Mgmt-Cluster-demo --branch=main --path=./cluster-resource --personal
+  else
+      echo $exit_code
+  fi
 
-# copy ArgoCD server secret to clipboard and launch browser, user admin, pw paste from clipboard
-launch_argo:
-  #!/usr/bin/env bash
-  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d | {{copy}}
-  sleep 3
-  nohup {{browse}} http://localhost:{{argocd_port}} >/dev/null 2>&1 &
+# for core componets you want in your cluster
+add_apps_to_git:
+  cp -r $my_project_repo/* $flux_repo/cluster-resource/
+  git --git-dir=$flux_repo/.git --work-tree=$flux_repo add --all
+  git --git-dir=$flux_repo/.git --work-tree=$flux_repo commit -m "add new apps to core"
+  git --git-dir=$flux_repo/.git --work-tree=$flux_repo push
 
-# bootstrap ArgoCD apps and set reconcilation timer to 30 seconds
-bootstrap_apps:
-  kubectl apply -f bootstrap.yaml
+bootstrap_capi cluster_name='control-plane':
+  export KUBECONFIG=$(kind get kubeconfig --name {{cluster_name}})
+  export CLUSTER_TOPOLOGY=true
+  export MachinePool=true
+  clusterctl init --infrastructure docker
+
 
 # sync apps locally
 sync:

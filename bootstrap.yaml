@@ -10,7 +10,7 @@ spec:
   project: default
   source:
     path: apps
-    repoURL: https://github.com/Piotr1215/crossplane-box
+    repoURL: https://github.com/jolo1993/crossplane-box
     targetRevision: HEAD
   syncPolicy:
     automated:
